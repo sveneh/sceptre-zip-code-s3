@@ -109,8 +109,11 @@ class S3Package(Hook):
         md5 = hashlib.new("md5")
         md5.update(content)
 
+        # Sceptre v4 provides connection_manager on the stack; fall back if not set on self
+        connection_manager = getattr(self, "connection_manager", None) or getattr(self.stack, "connection_manager")
+
         try:
-            self.connection_manager.call(
+            connection_manager.call(
                 service="s3",
                 command="head_object",
                 kwargs={
@@ -135,7 +138,7 @@ class S3Package(Hook):
                 )
             )
 
-            result = self.connection_manager.call(
+            result = connection_manager.call(
                 service="s3",
                 command="put_object",
                 kwargs={

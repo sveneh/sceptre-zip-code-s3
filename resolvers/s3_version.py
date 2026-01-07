@@ -26,7 +26,10 @@ class S3Version(Resolver):
                 "S3 bucket/key could not be parsed nor from the argument, neither from sceptre_user_data['Code']"
             )
 
-        result = self.connection_manager.call(
+        # Sceptre v4 provides connection_manager on the stack; fall back if not set on self
+        connection_manager = getattr(self, "connection_manager", None) or getattr(self.stack, "connection_manager")
+
+        result = connection_manager.call(
             service="s3",
             command="head_object",
             kwargs={"Bucket": s3_bucket, "Key": s3_key},

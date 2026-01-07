@@ -1,8 +1,6 @@
 # Sceptre zip-code-s3
 
-Hook and resolver for [Sceptre](https://sceptre.cloudreach.com/latest/) `v1.3.4+` to package complex Lambda functions on-the-fly and deploy them using S3 bucket.
-
-This solution, fully compatible with **Python 2/3**, works well for **ALL** AWS Lambda runtimes: just tune `Makefile` with your own instructions for concrete runtime.
+Hook and resolver for [Sceptre](https://sceptre.cloudreach.com/latest/) `v4` to package Lambda code on-the-fly and push it to S3. Tested with **Python 3.8+**. Current release: **2.0.0**.
 
 ## Overview
 
@@ -18,31 +16,39 @@ Therefore, such archived artifacts should never be checked in, rather packaged a
 
 ## Getting Started
 
-### How To install
+### Install
 
-`NB!` _Sceptre `1.x` does not yet recognize `entry_points` installation option from `pip` setup manifesto._
-_Therefore, it's not possible to install it using `pip`_.
+```bash
+# editable (recommended for local development)
+pip install -e /path/to/sceptre-zip-code-s3
 
-* Clone the repository locally:
+# or regular install
+pip install /path/to/sceptre-zip-code-s3
+```
 
-    ```bash
-    $ git clone git@github.com:cloudreach/sceptre-zip-code-s3.git
-    ```
+Requires `sceptre>=4,<5` and Python 3.8+ (declared in `setup.py`).
 
-* Install required dependencies:
+### Usage (hook + resolver)
 
-    ```bash
-    $ cd sceptre-zip-code-s3
-    $ make deps
-    ```
+Hook to build/zip/upload before create/update:
+```yaml
+hooks:
+  before_create:
+    - !s3_package path/to/code^^my-bucket/path/to/code.zip
+  before_update:
+    - !s3_package path/to/code^^my-bucket/path/to/code.zip
+```
 
-* Setup plugins to existing Sceptre project:
+Resolver to fetch the latest object version (optional):
+```yaml
+sceptre_user_data:
+  Code:
+    S3Bucket: my-bucket
+    S3Key: path/to/code.zip
+    S3ObjectVersion: !s3_version my-bucket/path/to/code.zip
+```
 
-    ```bash
-    $ make plugins TARGET=<existing_sceptre_project_root>
-    ```
-
-To display available commands, run `make` or `make help` command.
+See `config/example/` for complete sample stacks (bucket, role, lambda). To display available commands, run `make` or `make help`.
 
 ### Prepare project
 
@@ -53,39 +59,12 @@ To display available commands, run `make` or `make help` command.
     $ vi config/config.yaml
     ```
 
-### Create S3 bucket
+### Example walkthrough
 
-* Create new `S3` bucket for artifacts deployments:
+- Create artifacts bucket: `sceptre launch-env example/storage`
+- Deploy role + lambda: `sceptre launch-env example/serverless`
 
-    ```bash
-    $ sceptre launch-env example/storage
-    ```
-
-    `NB!` _It's possible to refer existing bucket, with enabled **Versioning** support._
-
-### Deploy Lambdas
-
-* Deploy whole environment at once:
-
-    ```bash
-    $ sceptre launch-env example/serverless
-    ```
-
-* Or deploy stacks one by one:
-
-    ```bash
-    $ sceptre launch-stack example/serverless lambda-role
-    $ sceptre launch-stack example/serverless lambda-py2-deps
-    $ sceptre launch-stack example/serverless lambda-py3-deps-custom
-    ```
-
-This is what have been done (per function):
-
-- install function required dependencies
-- prepare files for distribution
-- package and deploy artifact to S3 bucket, if checksum differs
-- update CloudFormation stack with `latest` version of S3 file
-- remove distribution directory
+This builds dependencies, zips code, uploads to S3 if changed, updates the stack, and cleans up the dist directory.
 
 ### Test Lambda function from CLI
 
@@ -110,15 +89,7 @@ $ aws lambda invoke \
 $ cat output.txt | xargs echo -e
 ```
 
-If everything went well, output would be like that:
-
-```yaml
-helper: Hello from Python 2.7.12
-key1: value-1
-key2: [21, 42]
-key3:
-- {name: value-3}
-```
+If everything went well, you’ll see the helper output echoed from the Lambda payload.
 
 ### Cleanup infrastructure
 
