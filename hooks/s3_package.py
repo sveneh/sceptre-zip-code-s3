@@ -1,26 +1,14 @@
 import hashlib, os, subprocess, zipfile
 from base64 import b64encode
+from subprocess import DEVNULL
+from io import BytesIO as BufferIO
 from sceptre.hooks import Hook
 from sceptre.resolvers import Resolver
 from botocore.exceptions import ClientError
 from datetime import datetime
 from shutil import rmtree
-try:
-    from subprocess import DEVNULL
-except ImportError:
-    DEVNULL = open(os.devnull, 'wb')
 
-try:
-    from StringIO import StringIO as BufferIO
-except ImportError:
-    from io import BytesIO as BufferIO
-
-try:
-    import zlib
-
-    compression = zipfile.ZIP_DEFLATED
-except ImportError:
-    compression = zipfile.ZIP_STORED
+compression = zipfile.ZIP_DEFLATED
 
 
 class S3Package(Hook):
@@ -36,49 +24,58 @@ class S3Package(Hook):
             fn_root_dir, s3_object = self.argument.split(self.DELIMITER, 1)
             s3_bucket, s3_key = s3_object.split("/", 1)
             self.logger.debug(
-                "[{}] S3 bucket/key parsed from the argument".format(self.NAME)
-            )
-        elif "sceptre_user_data" in self.stack_config:
-            code = self.stack_config.get("sceptre_user_data").get("Code", {})
-            fn_root_dir, s3_bucket, s3_key = [
-                self.argument,
-                code.get("S3Bucket"),
-                code.get("S3Key"),
-            ]
-            self.logger.debug(
-                "[{}] S3 bucket/key parsed from sceptre_user_data['Code']".format(
-                    self.NAME
-                )
+                f"[{self.NAME}] S3 bucket/key parsed from the argument: {s3_bucket}/{s3_key}"
             )
         else:
-            raise Exception(
-                "S3 bucket/key could not be parsed nor from the argument, neither from sceptre_user_data['Code']"
-            )
+            # Sceptre v4: data lives on self.stack.sceptre_user_data
+            # v2/v3: some custom hooks used self.stack_config; keep a soft fallback.
+            stack_user_data = None
+            if getattr(self, "stack", None):
+                stack_user_data = getattr(self.stack, "sceptre_user_data", None)
+            if not stack_user_data and getattr(self, "stack_config", None):
+                stack_user_data = self.stack_config.get("sceptre_user_data")
+
+            if stack_user_data and "Code" in stack_user_data:
+                code = stack_user_data.get("Code", {})
+            else:
+                code = {}
+
+            if code.get("S3Bucket") and code.get("S3Key"):
+                fn_root_dir, s3_bucket, s3_key = [
+                    self.argument,
+                    code.get("S3Bucket"),
+                    code.get("S3Key"),
+                ]
+                self.logger.debug(
+                    f"[{self.NAME}] S3 bucket/key parsed from sceptre_user_data['Code']: {s3_bucket}/{s3_key}"
+                )
+            else:
+                raise Exception(
+                    "S3 bucket/key could not be parsed nor from the argument, neither from sceptre_user_data['Code']"
+                )
 
         if isinstance(s3_bucket, Resolver):
             s3_bucket = s3_bucket.resolve()
-            self.logger.debug("[{}] resolved S3 bucket value to {}".format(self.NAME, s3_bucket))
+            self.logger.debug(f"[{self.NAME}] resolved S3 bucket value to {s3_bucket}")
 
         if isinstance(s3_key, Resolver):
             s3_key = s3_key.resolve()
-            self.logger.debug("[{}] resolved S3 key value to {}".format(self.NAME, s3_key))
+            self.logger.debug(f"[{self.NAME}] resolved S3 key value to {s3_key}")
 
         fn_dist_dir = os.path.join(fn_root_dir, self.TARGET)
 
-        command = 'make -C {}'.format(fn_root_dir)
+        command = f"make -C {fn_root_dir}"
 
-        self.logger.info(
-            "Making dependencies with '{}' command, output hidden.".format(command)
-        )
+        self.logger.info(f"Making dependencies with '{command}' command, output hidden.")
 
-        p = subprocess.Popen([command], shell = True, stdout = DEVNULL, stderr = DEVNULL)
+        p = subprocess.Popen([command], shell=True, stdout=DEVNULL, stderr=DEVNULL)
         p.wait()
 
         if p.returncode != 0:
             raise Exception("Failed to make dependencies, debug command manually.")
 
         self.logger.debug(
-            "[{}] reading ALL files from {}/ directory".format(self.NAME, fn_dist_dir)
+            f"[{self.NAME}] reading ALL files from {fn_dist_dir}/ directory"
         )
 
         files = sorted(
@@ -97,7 +94,7 @@ class S3Package(Hook):
         with zipfile.ZipFile(buffer, mode="w", compression=compression) as f:
             for file in files:
                 real_file = os.path.join(fn_dist_dir, file)
-                self.logger.debug("[{}] zipping file {}".format(self.NAME, real_file))
+                self.logger.debug(f"[{self.NAME}] zipping file {real_file}")
                 os.utime(real_file, (static_ts, static_ts))
                 f.write(real_file, arcname=file)
 
@@ -119,24 +116,16 @@ class S3Package(Hook):
                 kwargs={
                     "Bucket": s3_bucket,
                     "Key": s3_key,
-                    "IfMatch": '"{}"'.format(md5.hexdigest()),
+                    "IfMatch": f"\"{md5.hexdigest()}\"",
                 },
             )
 
-            self.logger.info(
-                "[{}] skip packaging {} - no changes detected".format(
-                    self.NAME, fn_dist_dir
-                )
-            )
+            self.logger.info(f"[{self.NAME}] skip packaging {fn_dist_dir} - no changes detected")
         except ClientError as e:
             if e.response["Error"]["Code"] not in ["404", "412"]:
                 raise e
 
-            self.logger.info(
-                "[{}] uploading {} to s3://{}/{}".format(
-                    self.NAME, fn_dist_dir, s3_bucket, s3_key
-                )
-            )
+            self.logger.info(f"[{self.NAME}] uploading {fn_dist_dir} to s3://{s3_bucket}/{s3_key}")
 
             result = connection_manager.call(
                 service="s3",
@@ -150,7 +139,5 @@ class S3Package(Hook):
             )
 
             self.logger.debug(
-                "[{}] object s3://{}/{} new version: {}".format(
-                    self.NAME, s3_bucket, s3_key, result.get("VersionId")
-                )
+                f"[{self.NAME}] object s3://{s3_bucket}/{s3_key} new version: {result.get('VersionId')}"
             )

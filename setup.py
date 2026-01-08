@@ -3,7 +3,7 @@ from setuptools import find_packages, setup
 
 setup(
     name="sceptre-zip-code-s3",
-    version="2.0.0",
+    version="2.1.0",
     description="Sceptre hook and resolver to package code and fetch S3 object versions.",
     author="Cloudreach / WCS (updated for Sceptre v4)",
     packages=find_packages(exclude=["src", "templates", "example", "examples", "tests"]),

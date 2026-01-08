@@ -1,1 +1,2 @@
 sceptre>=4,<5
+setuptools
