@@ -13,8 +13,8 @@ class S3Version(Resolver):
             self.logger.debug(
                 "[{}] S3 bucket/key parsed from the argument".format(self.NAME)
             )
-        elif "sceptre_user_data" in self.stack_config:
-            code = self.stack_config.get("sceptre_user_data").get("Code", {})
+        elif hasattr(self.stack, "sceptre_user_data") and self.stack.sceptre_user_data:
+            code = self.stack.sceptre_user_data.get("Code", {})
             s3_bucket, s3_key = [code.get("S3Bucket"), code.get("S3Key")]
             self.logger.debug(
                 "[{}] S3 bucket/key parsed from sceptre_user_data['Code']".format(
