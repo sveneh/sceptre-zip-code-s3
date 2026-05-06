@@ -1,2 +1,3 @@
 sceptre>=4,<5
 setuptools
+pytest>=8.0

@@ -13,18 +13,22 @@ class S3Version(Resolver):
             self.logger.debug(
                 "[{}] S3 bucket/key parsed from the argument".format(self.NAME)
             )
-        elif hasattr(self.stack, "sceptre_user_data") and self.stack.sceptre_user_data:
-            code = self.stack.sceptre_user_data.get("Code", {})
-            s3_bucket, s3_key = [code.get("S3Bucket"), code.get("S3Key")]
+        else:
+            code = self._get_code_from_raw_sceptre_user_data()
+            if code.get("S3Bucket") and code.get("S3Key"):
+                s3_bucket, s3_key = [code.get("S3Bucket"), code.get("S3Key")]
+            else:
+                raise Exception(
+                    "S3 bucket/key could not be parsed nor from the argument, neither from sceptre_user_data['Code']"
+                )
             self.logger.debug(
                 "[{}] S3 bucket/key parsed from sceptre_user_data['Code']".format(
                     self.NAME
                 )
             )
-        else:
-            raise Exception(
-                "S3 bucket/key could not be parsed nor from the argument, neither from sceptre_user_data['Code']"
-            )
+
+        s3_bucket = self._resolve_value(s3_bucket)
+        s3_key = self._resolve_value(s3_key)
 
         # Sceptre v4 provides connection_manager on the stack; fall back if not set on self
         connection_manager = getattr(self, "connection_manager", None) or getattr(self.stack, "connection_manager")
@@ -44,3 +48,14 @@ class S3Version(Resolver):
         )
 
         return version_id
+
+    def _get_code_from_raw_sceptre_user_data(self):
+        stack_user_data = {}
+        if getattr(self, "stack", None):
+            stack_user_data = getattr(self.stack, "_sceptre_user_data", None) or {}
+        return stack_user_data.get("Code", {})
+
+    def _resolve_value(self, value):
+        if isinstance(value, Resolver):
+            value = value.resolve()
+        return value

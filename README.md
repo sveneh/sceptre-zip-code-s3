@@ -28,6 +28,25 @@ pip install /path/to/sceptre-zip-code-s3
 
 Requires `sceptre>=4,<5` and Python 3.8+ (declared in `setup.py`).
 
+### Development and tests
+
+Create a virtual environment, install the package dependencies, and install the package in editable mode:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+pip install -e .
+```
+
+Run the test suite with:
+
+```bash
+python -m pytest -q
+```
+
+The tests are local unit tests. They do not create Sceptre change sets, deploy CloudFormation stacks, or call AWS unless a test explicitly adds that behavior.
+
 ### Usage (hook + resolver)
 
 Hook to build/zip/upload before create/update:
